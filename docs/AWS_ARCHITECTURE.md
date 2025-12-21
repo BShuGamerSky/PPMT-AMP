@@ -104,160 +104,218 @@ GET /prices
 
 ### Phase 2: Data Upload (Next)
 ```
+Daily Data Scraping Pipeline:
+┌─────────────────────────────────────────────────────────┐
+│  External Data Sources (Market APIs, Websites)          │
+└──────────────────────┬──────────────────────────────────┘
+                       │
+                       ▼
+┌─────────────────────────────────────────────────────────┐
+│  Lambda (data_scraper)                                   │
+│  - Schedule: CloudWatch Events (daily cron)              │
+│  - Scrapes market data from multiple sources             │
+│  - Raw data extraction                                   │
+└──────────────────────┬──────────────────────────────────┘
+                       │ Upload raw files
+                       ▼
+┌─────────────────────────────────────────────────────────┐
+│  S3 Bucket (ppmt-amp-data-sync)                         │
+│  /raw/YYYY-MM-DD/source1.csv                            │
+│  /raw/YYYY-MM-DD/source2.json                           │
+│  /raw/YYYY-MM-DD/source3.xml                            │
+└──────────────────────┬──────────────────────────────────┘
+                       │ Multiple sources
+                       ▼
+┌─────────────────────────────────────────────────────────┐
+│  Redshift Data Warehouse                                 │
+│  - COPY command from S3                                  │
+│  - Staging tables per source                             │
+│  - Daily ETL job (SQL stored procedures)                 │
+│    ├── Data validation                                   │
+│    ├── Deduplication                                     │
+│    ├── Price normalization                               │
+│    ├── Currency conversion                               │
+│    └── Aggregation & enrichment                          │
+└──────────────────────┬──────────────────────────────────┘
+                       │ Processed data
+                       ▼
+┌─────────────────────────────────────────────────────────┐
+│  Lambda (redshift_to_dynamodb_sync)                     │
+│  - Triggered: After Redshift job completion              │
+│  - Queries Redshift for processed records                │
+│  - Batch writes to DynamoDB (25 items/request)           │
+└──────────────────────┬──────────────────────────────────┘
+                       │ Final data
+                       ▼
+┌─────────────────────────────────────────────────────────┐
+│  DynamoDB (PPMT-AMP-Prices)                             │
+│  - Real-time queries for iOS app                         │
+│  - Latest validated prices                               │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Data Flow Summary:**
+```
+External APIs → Lambda Scraper → S3 (raw) → Redshift (ETL) → Lambda Sync → DynamoDB → iOS App
+   (hourly)     (extract)      (staging)   (transform)      (load)       (real-time)
+```
+
+### User Upload (Optional Feature)
+```
 iOS App (Registered Users)
     │
-    │ POST /prices/upload
+    │ POST /prices/upload (manual upload)
     ▼
 API Gateway
     │
     ▼
-Lambda (upload_handler)
-    ├─→ Validate user (Cognito)
-    ├─→ Process CSV/JSON
-    ├─→ Store raw in S3
-    └─→ Write to DynamoDB
+Lambda (user_upload_handler)
+    ├─→ Store in S3 /user-uploads/
+    └─→ Add to Redshift processing queue
+         (processed in next daily ETL job)
 ```
 
-### Phase 3: Data Pipeline (Analytics)
+### Phase 3: Superuser Management Portal (iOS)
 ```
-DynamoDB Streams
-    │ (Change events)
-    ▼
-Lambda (stream_processor)
-    ├─→ Transform data
-    ├─→ Export to S3
-    └─→ Load to Redshift
-         │
-         ▼
-    Redshift Warehouse
-    - Historical analysis
-    - Price trends
-    - Market insights
-```
-
-### Phase 4: Offline Sync (Mobile)
-```
-iOS App
+iOS App (Superuser Role)
     │
-    │ Background sync
+    │ POST /prices/update
+    │ POST /prices/create
+    │ DELETE /prices/{id}
     ▼
-S3 Bucket (data-sync)
-    ├─→ Daily snapshots
-    ├─→ Incremental updates
-    └─→ Offline cache
+API Gateway
+    │ Verify superuser credentials
+    ▼
+Lambda (price_management_handler)
+    ├─→ Validate superuser role (Cognito)
+    ├─→ Validate price data
+    ├─→ Direct DynamoDB write/update/delete
+    └─→ Log audit trail
          │
          ▼
-    Local SQLite
-    - Offline queries
-    - Fast UI
+┌─────────────────────────────────────┐
+│  DynamoDB (PPMT-AMP-Prices)         │
+│  - Manual price updates             │
+│  - Corrections and overrides        │
+│  - Real-time changes                │
+└─────────────────────────────────────┘
+
+┌─────────────────────────────────────┐
+│  DynamoDB (PPMT-AMP-AuditLog)       │
+│  - Track who changed what           │
+│  - Timestamp all modifications      │
+│  - Superuser activity log           │
+└─────────────────────────────────────┘
 ```
 
-### Phase 5: Advanced Features
+**Superuser Capabilities:**
+- ✏️ Edit existing prices (market price, retail price)
+- ➕ Add new products manually
+- 🗑️ Delete incorrect/outdated entries
+- 🔍 View audit logs of changes
+- 🚫 Rate limiting exempt
+
+**UI Features:**
 ```
-┌────────────────────────────────────┐
-│         CloudWatch                 │
-│  - Metrics, Logs, Alarms           │
-└────────────────────────────────────┘
-          │
-          ▼
-┌────────────────────────────────────┐
-│      API Gateway (Enhanced)        │
-│  - Usage Plans                     │
-│  - API Keys (for partners)         │
-│  - Request throttling              │
-│  - Response caching                │
-└────────────────────────────────────┘
-          │
-          ▼
-┌────────────────────────────────────┐
-│         Lambda Functions           │
-│  - price_query (✅ Done)          │
-│  - price_upload                    │
-│  - price_export                    │
-│  - analytics_query                 │
-│  - notification_trigger            │
-└────────────────────────────────────┘
-          │
-          ▼
-┌────────────────────────────────────┐
-│          Data Layer                │
-│  - DynamoDB (✅ Real-time)        │
-│  - S3 (Storage & Export)           │
-│  - Redshift (Analytics)            │
-│  - ElastiCache (Caching)           │
-└────────────────────────────────────┘
+MainViewController (Superuser Mode)
+├── Query Prices (same as visitor)
+├── ➕ Add New Price Button
+├── Edit Mode (tap row to edit)
+├── Delete Confirmation
+└── Audit Log Viewer
+```
+
+### Phase 4: Advanced Analytics & Monitoring
+```
+CloudWatch Dashboards
+├── API Request Metrics
+├── Lambda Performance
+├── DynamoDB Usage
+├── Error Rates
+└── Cost Tracking
+
+SNS Notifications
+├── Price anomaly alerts
+├── ETL job failures
+├── High error rates
+└── Cost threshold alerts
 ```
 
 ---
 
-## 3. Why S3 is in App Implementation?
+## 3. S3 Usage - Backend Only
 
-### S3 Use Cases for iOS App
+### S3 Buckets (No App Access)
 
-#### **Current Code (Prepared but Not Used Yet)**
-```csharp
-// S3Service.cs in PPMT-AMP.Core
-public class S3Service {
-    // Methods exist but not called yet:
-    - UploadFileAsync()
-    - DownloadFileAsync()
-    - ListObjectsAsync()
-}
+S3 is used **exclusively for backend ETL pipeline** and should **NOT be accessed by iOS app**:
+
+```
+ppmt-amp-data-sync-363416481362
+├── /raw/YYYY-MM-DD/          ← Scraper Lambda writes
+│   ├── source1.csv
+│   ├── source2.json
+│   └── metadata.json
+│
+├── /processed/YYYY-MM-DD/    ← Redshift exports (optional)
+│   └── processed_data.parquet
+│
+└── /archives/                ← Long-term storage
+    └── historical_backups.gz
+
+ppmt-amp-exports-363416481362
+└── /analytics/               ← Redshift query results
+    └── reports/YYYY-MM/
 ```
 
-#### **Why S3 Service Exists:**
+### Why No App Access to S3?
 
-### 1️⃣ **Future: Bulk Data Upload**
-```csharp
-// User uploads CSV file with 1000s of prices
-var fileStream = File.OpenRead("prices.csv");
-await s3Service.UploadFileAsync("raw/prices-2025-12-20.csv", fileStream);
+**Reasons:**
+1. ✅ **All data flows through DynamoDB** - App queries DynamoDB only
+2. ✅ **S3 is for ETL staging** - Raw/processed data for Redshift
+3. ✅ **Security isolation** - No need to grant S3 permissions to app
+4. ✅ **Simpler architecture** - Single data source (DynamoDB) for app
+5. ✅ **No offline sync via S3** - Real-time queries sufficient
 
-// Lambda processes S3 file asynchronously
-// → Parse CSV
-// → Validate data
-// → Bulk insert to DynamoDB
+**App Data Flow:**
+```
+iOS App → API Gateway → Lambda → DynamoDB
+         (queries)              (read/write)
+         
+         NO CONNECTION TO S3
+
+S3 is backend-only:
+Scraper → S3 → Redshift → Sync Lambda → DynamoDB
+(completely isolated from app)
 ```
 
-### 2️⃣ **Future: Offline Data Sync**
-```csharp
-// App downloads daily snapshot for offline use
-await s3Service.DownloadFileAsync(
-    "snapshots/prices-latest.json", 
-    localPath
-);
+### S3Service Status
 
-// Store in local SQLite for offline queries
-```
+**Current Code:**
+- `S3Service.cs` exists in Core project
+- **SHOULD BE REMOVED** - Not needed for app functionality
+- S3 access only for backend Lambdas (scraper, Redshift sync)
 
-### 3️⃣ **Future: Large Exports**
-```csharp
-// User exports price history (too large for API response)
-await apiClient.RequestExportAsync(startDate, endDate);
+**Why It Was Originally Included:**
+- ❌ Initial architecture considered direct S3 access
+- ❌ Planned for bulk uploads (now handled by superuser CRUD via API)
+- ❌ Planned for offline sync (not needed - real-time DynamoDB queries)
+- ❌ Over-engineered for future use cases that don't make sense
 
-// Lambda generates CSV → saves to S3
-// App downloads from S3 directly
-var exportUrl = await s3Service.GetPresignedUrlAsync("exports/user123-export.csv");
-await DownloadFile(exportUrl);
-```
+**Correct Architecture:**
+- ✅ App never touches S3
+- ✅ All user data operations via API Gateway → Lambda → DynamoDB
+- ✅ Superuser edits via API endpoints (create/update/delete)
+- ✅ S3 is backend infrastructure only (invisible to app)
 
-### 4️⃣ **Future: Image/Document Upload**
-```csharp
-// User uploads product images
-await s3Service.UploadFileAsync(
-    "product-images/prod-123.jpg", 
-    imageStream
-);
-
-// Save S3 URL in DynamoDB
-await dynamoDbService.UpdateProductImage(productId, s3Url);
-```
-
-### **Why Include Now?**
-- ✅ Architecture prepared for future features
-- ✅ Service layer ready when needed
-- ✅ No harm (just unused code)
-- ✅ Team understands full architecture
+**Data Access Summary:**
+| Component | DynamoDB | S3 | API Gateway |
+|-----------|----------|----|-----------| 
+| iOS App | ❌ No | ❌ No | ✅ Yes |
+| Lambda (query) | ✅ Read | ❌ No | ✅ Yes |
+| Lambda (management) | ✅ R/W | ❌ No | ✅ Yes |
+| Lambda (scraper) | ❌ No | ✅ Write | ❌ No |
+| Lambda (sync) | ✅ Write | ❌ No | ❌ No |
+| Redshift | ❌ No | ✅ Read | ❌ No |
 
 ---
 
@@ -274,10 +332,10 @@ PPMT-AMP.iOS/
 └── PPMT-AMP.Core/
     ├── Services/
     │   ├── ApiClient ✅ (Used - API calls)
-    │   ├── AuthService ✅ (Used - Anonymous/Access Keys)
-    │   ├── AWSService ⏳ (Prepared - Not used yet)
-    │   ├── S3Service ⏳ (Prepared - Not used yet)
-    │   └── DynamoDBService ⏳ (Prepared - Not used yet)
+    │   ├── AuthService ✅ (Used - Anonymous/Cognito)
+    │   ├── S3Service ❌ (Remove - Not needed)
+    │   ├── DynamoDBService ❌ (Remove - Not needed)
+    │   └── AWSService ❌ (Remove - Not needed)
     │
     ├── Models/
     │   ├── PriceData ✅ (Used)
@@ -287,24 +345,36 @@ PPMT-AMP.iOS/
         └── AppConfiguration ✅ (Used)
 ```
 
-**Why Unused Services Exist:**
-- **S3Service**: For future file uploads/downloads
-- **DynamoDBService**: For future direct DynamoDB access (if needed)
-- **AWSService**: For future AWS SDK operations
+**Services to Remove:**
+- **S3Service** ❌ - App should never access S3
+- **DynamoDBService** ❌ - App should never directly access DynamoDB
+- **AWSService** ❌ - No AWS SDK access needed from app
+
+**Correct Pattern:**
+```
+App → ApiClient → API Gateway → Lambda → AWS Resources
+     (HTTP only)              (AWS SDK)
+```
+
+**Why This is Better:**
+1. ✅ **Security** - No AWS credentials in app
+2. ✅ **Simplicity** - Single interface (ApiClient)
+3. ✅ **Backend control** - All logic in Lambda
+4. ✅ **Smaller app** - Fewer dependencies
+5. ✅ **Easier testing** - Mock ApiClient only
 
 **Current Flow Uses:**
 ```
 App → ApiClient → API Gateway → Lambda → DynamoDB
-     (HTTP)                    (SDK)
+     (HTTP + HMAC)           (AWS SDK)
 ```
 
-**Future Direct Access (Optional):**
+**No Direct AWS Access Needed:**
 ```
-App → S3Service → S3 Bucket
-     (AWS SDK)
+❌ App → S3Service → S3 (WRONG - Security risk)
+❌ App → DynamoDBService → DynamoDB (WRONG - No credentials)
 
-App → DynamoDBService → DynamoDB
-     (AWS SDK)
+✅ App → ApiClient → API → Lambda → AWS (CORRECT)
 ```
 
 ---
@@ -332,8 +402,23 @@ App → DynamoDBService → DynamoDB
    │   └── lastRequest (Number - Unix timestamp)
    └── TTL: Auto-expire after 24 hours
 
-3. PPMT-AMP-Users ⏳ (Future - for Cognito)
-   └── User preferences, saved queries
+3. PPMT-AMP-Users ⏳ (Phase 3 - For Cognito)
+   ├── Primary Key: userId (String)
+   ├── Attributes:
+   │   ├── email, username
+   │   ├── role (visitor/user/superuser)
+   │   ├── createdAt, lastLogin
+   │   └── preferences
+   └── GSI: RoleIndex (role)
+
+4. PPMT-AMP-AuditLog ⏳ (Phase 3 - For superuser tracking)
+   ├── Primary Key: logId (String)
+   ├── Sort Key: timestamp (Number)
+   ├── Attributes:
+   │   ├── userId, action (create/update/delete)
+   │   ├── priceId, oldValue, newValue
+   │   └── ipAddress, userAgent
+   └── TTL: Auto-expire after 90 days
 ```
 
 ### S3 Buckets
@@ -354,20 +439,53 @@ App → DynamoDBService → DynamoDB
    ├── Function: Query prices with signature verification
    └── Permissions: DynamoDB read, Rate limit table R/W
 
-2. ppmt-amp-upload-handler ⏳ (Future)
-   ├── Trigger: API Gateway POST /prices/upload
-   ├── Function: Process bulk price uploads
-   └── Permissions: S3 write, DynamoDB write
+2. ppmt-amp-data-scraper ⏳ (Phase 2 - Priority)
+   ├── Trigger: CloudWatch Events (daily cron)
+   ├── Function: Scrape market data from external APIs
+   └── Permissions: S3 write (raw/)
 
-3. ppmt-amp-data-export ⏳ (Future)
+3. ppmt-amp-redshift-sync ⏳ (Phase 2 - Priority)
+   ├── Trigger: Manual/Scheduled after Redshift ETL
+   ├── Function: Batch load processed data to DynamoDB
+   └── Permissions: Redshift query, DynamoDB batch write
+
+4. ppmt-amp-price-management ⏳ (Phase 3 - Superuser)
+   ├── Trigger: API Gateway POST /prices/{create|update|delete}
+   ├── Function: Handle superuser CRUD operations
+   └── Permissions: Cognito verify, DynamoDB R/W, AuditLog write
+
+5. ppmt-amp-data-export ⏳ (Future)
    ├── Trigger: API Gateway POST /export
-   ├── Function: Generate CSV exports
+   ├── Function: Generate CSV exports from DynamoDB
    └── Permissions: DynamoDB read, S3 write
+```
 
-4. ppmt-amp-stream-processor ⏳ (Future)
-   ├── Trigger: DynamoDB Streams
-   ├── Function: Real-time data transformations
-   └── Permissions: DynamoDB Streams, S3, Redshift
+### Redshift Cluster (Phase 2 - Priority)
+```
+PPMT-AMP-Warehouse
+├── Node Type: dc2.large (start small)
+├── Nodes: 2 (for redundancy)
+├── Tables:
+│   ├── staging_source1 (raw CSV data)
+│   ├── staging_source2 (raw JSON data)
+│   ├── staging_source3 (raw XML data)
+│   ├── dim_products (dimension table)
+│   ├── dim_categories (dimension table)
+│   └── fact_prices (fact table - final processed)
+│
+├── Stored Procedures:
+│   ├── sp_load_raw_data() - COPY from S3
+│   ├── sp_validate_data() - Check constraints
+│   ├── sp_deduplicate() - Remove duplicates
+│   ├── sp_normalize_prices() - Currency conversion
+│   └── sp_export_to_sync() - Prepare for DynamoDB
+│
+└── Daily ETL Job:
+    1. COPY raw data from S3
+    2. Validate and clean
+    3. Transform and enrich
+    4. Load to fact_prices
+    5. Trigger Lambda sync to DynamoDB
 ```
 
 ### API Gateway Structure
@@ -378,14 +496,17 @@ PPMT-AMP-API (stou0wlmf4)
 │   ├── GET /prices ✅ (Active)
 │   │   └── → Lambda: ppmt-amp-price-query
 │   │
-│   ├── POST /prices/upload ⏳ (Future)
-│   │   └── → Lambda: ppmt-amp-upload-handler
+│   ├── POST /prices/create ⏳ (Phase 3 - Superuser)
+│   │   └── → Lambda: ppmt-amp-price-management
 │   │
-│   ├── POST /export ⏳ (Future)
-│   │   └── → Lambda: ppmt-amp-data-export
+│   ├── POST /prices/update ⏳ (Phase 3 - Superuser)
+│   │   └── → Lambda: ppmt-amp-price-management
 │   │
-│   └── GET /analytics ⏳ (Future)
-│       └── → Lambda: ppmt-amp-analytics
+│   ├── DELETE /prices/{id} ⏳ (Phase 3 - Superuser)
+│   │   └── → Lambda: ppmt-amp-price-management
+│   │
+│   └── GET /audit-logs ⏳ (Phase 3 - Superuser)
+│       └── → Lambda: ppmt-amp-price-management
 │
 └── Features to Add:
     ├── Usage Plans (API quotas)
@@ -402,35 +523,39 @@ PPMT-AMP-API (stou0wlmf4)
 ### What's Actually Used Now:
 ```
 iOS App
-  ├─ ApiClient ✅
-  ├─ AuthService ✅
-  ├─ AppConfiguration ✅
-  └─ Models ✅
+  ├─ ApiClient ✅ (Only interface to backend)
+  ├─ AuthService ✅ (Cognito authentication)
+  ├─ AppConfiguration ✅ (Settings)
+  └─ Models ✅ (Data structures)
 
 AWS Active Resources:
   ├─ API Gateway (GET /prices) ✅
   ├─ Lambda (price_query_handler) ✅
   ├─ DynamoDB (PPMT-AMP-Prices) ✅
-  └─ DynamoDB (PPMT-AMP-RateLimits) ✅
+  ├─ DynamoDB (PPMT-AMP-RateLimits) ✅
+  └─ S3 Buckets ✅ (backend ETL only)
 ```
 
-### What's Prepared But Not Used:
+### What Should Be Removed:
 ```
-iOS App:
-  ├─ S3Service ⏳ (for future uploads/downloads)
-  ├─ DynamoDBService ⏳ (for future direct access)
-  └─ AWSService ⏳ (for AWS SDK initialization)
-
-AWS Resources:
-  ├─ S3 Buckets ⏳ (created but empty)
-  └─ Lambda functions ⏳ (not deployed yet)
+iOS App (Unnecessary Services):
+  ├─ S3Service ❌ (App should never access S3)
+  ├─ DynamoDBService ❌ (App should never access DynamoDB directly)
+  └─ AWSService ❌ (No direct AWS SDK needed)
 ```
 
 ### Why This Architecture?
-1. **Scalable**: Each component can scale independently
-2. **Modular**: Add features without breaking existing
-3. **Cost-effective**: Pay only for what you use
-4. **Future-proof**: Ready for offline sync, analytics, bulk uploads
-5. **Development-friendly**: Services prepared but not forced into use yet
+1. **Secure**: No AWS credentials in app, all auth via API Gateway
+2. **Simple**: Single interface (ApiClient) for all backend operations
+3. **Scalable**: Lambda can scale, enforce rate limits, validate requests
+4. **Backend-controlled**: All business logic in Lambda, not app
+5. **Clean separation**: S3/Redshift for ETL, DynamoDB for app data, API Gateway as boundary
 
-**Next Steps:** Keep developing with current simple flow. Add S3/advanced features only when actually needed!
+**Data Ingestion:**
+- **Automated**: Scraper → S3 → Redshift → DynamoDB (backend only)
+- **Manual**: Superuser → API → Lambda → DynamoDB (via app)
+
+**Data Consumption:**
+- **App queries**: API → Lambda → DynamoDB (read-only for visitors, CRUD for superusers)
+
+---
