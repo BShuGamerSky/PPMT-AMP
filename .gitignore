@@ -1,0 +1,89 @@
+# Visual Studio / Xamarin
+*.userprefs
+*.usertasks
+*.user
+*.suo
+*.cache
+*.swp
+*~
+*.DS_Store
+bin/
+obj/
+*.pidb
+*.apk
+*.ap_
+*.dex
+local.properties
+.vs/
+
+# NuGet
+*.nupkg
+**/packages/*
+!**/packages/build/
+
+# iOS / Xcode
+*.ipa
+*.dSYM.zip
+*.dSYM
+*.xcuserstate
+xcuserdata/
+DerivedData/
+
+# Environment & Config
+.env
+.env.production
+.env.staging
+*.local.json
+appsettings.production.json
+appsettings.staging.json
+config/appsettings.production.json
+config/appsettings.staging.json
+
+# Logs
+logs/
+*.log
+
+# Data Files
+data/raw/*
+data/processed/*
+data/output/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+!data/output/.gitkeep
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Thumbnails
+._*
+
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Ww][Ii][Nn]32/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# Roslyn cache directories
+*.ide/
+
+# MSTest test Results
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*

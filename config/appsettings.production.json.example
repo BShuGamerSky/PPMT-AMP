@@ -1,0 +1,46 @@
+{
+  "AWS": {
+    "Region": "us-east-1",
+    "ApiGateway": {
+      "BaseUrl": "https://stou0wlmf4.execute-api.us-east-1.amazonaws.com/prod",
+      "AppId": "ppmt-amp-ios-v1",
+      "AppSecret": "REPLACE_WITH_SECURE_SECRET_FROM_ENV"
+    },
+    "S3": {
+      "BucketName": "ppmt-amp-data-sync-363416481362",
+      "DataPath": "raw/",
+      "ExportBucket": "ppmt-amp-exports-363416481362"
+    },
+    "DynamoDB": {
+      "TableName": "PPMT-AMP-Prices",
+      "IndexName": "DateIndex",
+      "RateLimitTable": "PPMT-AMP-RateLimits"
+    },
+    "Cognito": {
+      "UserPoolId": "us-east-1_XXXXXXXXX",
+      "ClientId": "your-client-id",
+      "IdentityPoolId": "us-east-1:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+    },
+    "Lambda": {
+      "DataProcessingFunction": "ppmt-amp-process-data",
+      "PriceCalculationFunction": "ppmt-amp-calculate-price",
+      "ExportFunction": "ppmt-amp-data-export"
+    },
+    "Redshift": {
+      "Host": "ppmt-amp-datawarehouse.XXXXXX.us-east-1.redshift.amazonaws.com",
+      "Port": 5439,
+      "Database": "ppmt_amp",
+      "Schema": "ppmt_amp"
+    }
+  },
+  "App": {
+    "Version": "1.0.0",
+    "Environment": "Production",
+    "LogLevel": "Info",
+    "Features": {
+      "OfflineSync": true,
+      "DataExport": true,
+      "Analytics": true
+    }
+  }
+}

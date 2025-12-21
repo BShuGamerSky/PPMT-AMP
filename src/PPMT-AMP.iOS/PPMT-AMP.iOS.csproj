@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-ios</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>PPMT_AMP.iOS</RootNamespace>
+    <AssemblyName>PPMT-AMP.iOS</AssemblyName>
+    <SupportedOSPlatformVersion>13.0</SupportedOSPlatformVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>true</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="AWSSDK.Core" Version="3.7.*" />
+    <PackageReference Include="AWSSDK.S3" Version="3.7.*" />
+    <PackageReference Include="AWSSDK.DynamoDBv2" Version="3.7.*" />
+    <PackageReference Include="AWSSDK.Lambda" Version="3.7.*" />
+    <PackageReference Include="AWSSDK.CognitoIdentity" Version="3.7.*" />
+    <PackageReference Include="AWSSDK.CognitoIdentityProvider" Version="3.7.*" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PPMT-AMP.Core\PPMT-AMP.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="..\..\config\appsettings.json">
+      <Link>appsettings.json</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+</Project>
