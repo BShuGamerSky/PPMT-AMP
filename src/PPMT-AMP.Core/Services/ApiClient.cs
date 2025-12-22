@@ -105,9 +105,12 @@ public class ApiClient
     /// <summary>
     /// Query prices (available to visitors)
     /// </summary>
-    public async Task<Models.ApiResponse<List<Models.PriceData>>> QueryPricesAsync(
+    public async Task<Models.ApiResponse<List<Models.PpmtItem>>> QueryPricesAsync(
+        string? seriesId = null,
         string? productId = null,
+        string? ipCharacter = null,
         string? category = null,
+        string? rarity = null,
         DateTime? startDate = null,
         DateTime? endDate = null,
         int limit = 50)
@@ -117,7 +120,7 @@ public class ApiClient
             // Check rate limit
             if (!CheckRateLimit())
             {
-                return new Models.ApiResponse<List<Models.PriceData>>
+                return new Models.ApiResponse<List<Models.PpmtItem>>
                 {
                     Success = false,
                     Message = "Rate limit exceeded. Please try again later.",
@@ -141,10 +144,16 @@ public class ApiClient
                 ["signature"] = signature
             };
 
+            if (!string.IsNullOrEmpty(seriesId))
+                queryParams["seriesId"] = seriesId;
             if (!string.IsNullOrEmpty(productId))
                 queryParams["productId"] = productId;
+            if (!string.IsNullOrEmpty(ipCharacter))
+                queryParams["ipCharacter"] = ipCharacter;
             if (!string.IsNullOrEmpty(category))
                 queryParams["category"] = category;
+            if (!string.IsNullOrEmpty(rarity))
+                queryParams["rarity"] = rarity;
             if (startDate.HasValue)
                 queryParams["startDate"] = startDate.Value.ToString("yyyy-MM-dd");
             if (endDate.HasValue)
@@ -157,9 +166,15 @@ public class ApiClient
 
             Console.WriteLine($"API Request: GET {url}");
             
-            // Make request
+            // Make request with timing
+            var requestStart = DateTime.UtcNow;
             var response = await _httpClient.GetAsync(url);
+            var networkTime = (DateTime.UtcNow - requestStart).TotalMilliseconds;
+            
             var content = await response.Content.ReadAsStringAsync();
+            var totalTime = (DateTime.UtcNow - requestStart).TotalMilliseconds;
+            
+            Console.WriteLine($"Network time: {networkTime:F2}ms, Total time: {totalTime:F2}ms");
 
             if (response.IsSuccessStatusCode)
             {
@@ -167,7 +182,7 @@ public class ApiClient
                 // For now, return mock data
                 var mockData = GenerateMockPriceData();
                 
-                return new Models.ApiResponse<List<Models.PriceData>>
+                return new Models.ApiResponse<List<Models.PpmtItem>>
                 {
                     Success = true,
                     Message = "Query successful",
@@ -178,7 +193,7 @@ public class ApiClient
             }
             else
             {
-                return new Models.ApiResponse<List<Models.PriceData>>
+                return new Models.ApiResponse<List<Models.PpmtItem>>
                 {
                     Success = false,
                     Message = $"API error: {response.StatusCode}",
@@ -190,7 +205,7 @@ public class ApiClient
         catch (Exception ex)
         {
             Console.WriteLine($"API Error: {ex.Message}");
-            return new Models.ApiResponse<List<Models.PriceData>>
+            return new Models.ApiResponse<List<Models.PpmtItem>>
             {
                 Success = false,
                 Message = $"Request failed: {ex.Message}"
@@ -201,28 +216,35 @@ public class ApiClient
     /// <summary>
     /// Generate mock price data for testing
     /// </summary>
-    private List<Models.PriceData> GenerateMockPriceData()
+    private List<Models.PpmtItem> GenerateMockPriceData()
     {
         var random = new Random();
-        var products = new[] { "iPhone 15 Pro", "MacBook Pro M3", "AirPods Pro", "iPad Air", "Apple Watch Ultra" };
-        var categories = new[] { "Electronics", "Computers", "Audio", "Tablets", "Wearables" };
+        var products = new[] { "Labubu Sitting", "Labubu Golden Monster", "Hirono Snowflakes", "Molly Racing", "Skullpanda City" };
+        var series = new[] { "SERIES-LABUBU-MONSTERS", "SERIES-LABUBU-MONSTERS", "SERIES-HIRONO-WINTER2024", "SERIES-MOLLY-RACING", "SERIES-SKULLPANDA-CITY" };
+        var ipCharacters = new[] { "Labubu", "Labubu", "Hirono", "Molly", "Skullpanda" };
+        var rarities = new[] { "Common", "Secret", "Rare", "Common", "Chase" };
         
-        var data = new List<Models.PriceData>();
+        var data = new List<Models.PpmtItem>();
         for (int i = 0; i < 10; i++)
         {
             var productIndex = random.Next(products.Length);
-            data.Add(new Models.PriceData
+            data.Add(new Models.PpmtItem
             {
-                Id = Guid.NewGuid().ToString(),
+                SeriesId = series[productIndex],
                 ProductId = $"PROD-{1000 + i}",
                 ProductName = products[productIndex],
-                Category = categories[productIndex],
-                MarketPrice = random.Next(500, 2000),
-                RetailPrice = random.Next(450, 1900),
-                Currency = "USD",
-                PriceDate = DateTime.UtcNow.AddDays(-random.Next(0, 30)),
-                Source = "Market Data",
-                Status = "Active"
+                IpCharacter = ipCharacters[productIndex],
+                SeriesName = products[productIndex].Split(' ')[0] + " Series",
+                Category = "Blind Box",
+                RetailPrice = random.Next(50, 100),
+                AfterMarketPrice = random.Next(80, 500),
+                Currency = "CNY",
+                PriceChange = 0,
+                PriceChangePercent = 0,
+                Timestamp = DateTime.UtcNow.ToString("o"),
+                Rarity = rarities[productIndex],
+                Status = "Active",
+                SeriesSize = 12
             });
         }
         
@@ -232,7 +254,7 @@ public class ApiClient
     /// <summary>
     /// Upload data (requires authentication)
     /// </summary>
-    public async Task<Models.ApiResponse<bool>> UploadPriceDataAsync(Models.PriceData priceData)
+    public async Task<Models.ApiResponse<bool>> UploadPriceDataAsync(Models.PpmtItem priceData)
     {
         if (!AuthService.Instance.IsAuthenticated)
         {

@@ -17,8 +17,11 @@ public class ApiRequest
 /// </summary>
 public class PriceQueryRequest : ApiRequest
 {
+    public string? SeriesId { get; set; }
     public string? ProductId { get; set; }
+    public string? IpCharacter { get; set; }
     public string? Category { get; set; }
+    public string? Rarity { get; set; }
     public DateTime? StartDate { get; set; }
     public DateTime? EndDate { get; set; }
     public int Limit { get; set; } = 50;
@@ -35,6 +38,21 @@ public class ApiResponse<T>
     public T? Data { get; set; }
     public int? RateLimitRemaining { get; set; }
     public DateTime? RateLimitReset { get; set; }
+}
+
+/// <summary>
+/// Series query request
+/// </summary>
+public class SeriesQueryRequest : ApiRequest
+{
+    public string? SeriesId { get; set; }
+    public string? IpCharacter { get; set; }
+    public string? Category { get; set; }
+    public string? Status { get; set; }
+    public DateTime? ReleaseDateFrom { get; set; }
+    public DateTime? ReleaseDateTo { get; set; }
+    public int Limit { get; set; } = 50;
+    public int Offset { get; set; } = 0;
 }
 
 /// <summary>

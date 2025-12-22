@@ -7,8 +7,6 @@ namespace PPMT_AMP.iOS;
 public class LoginViewController : UIViewController
 {
     private UILabel? titleLabel;
-    private UITextField? accessKeyField;
-    private UITextField? secretKeyField;
     private UIButton? loginButton;
     private UIButton? skipButton;
     private UIActivityIndicatorView? activityIndicator;
@@ -17,7 +15,7 @@ public class LoginViewController : UIViewController
     {
         base.ViewDidLoad();
 
-        Title = "AWS Login";
+        Title = "Welcome";
         if (View != null)
         {
             View.BackgroundColor = UIColor.SystemBackground;
@@ -50,66 +48,27 @@ public class LoginViewController : UIViewController
         };
         View.AddSubview(subtitleLabel);
 
-        // Access Key Field
-        var accessKeyLabel = new UILabel
-        {
-            Frame = new CGRect(20, 220, View.Bounds.Width - 40, 20),
-            Text = "AWS Access Key ID",
-            Font = UIFont.SystemFontOfSize(14),
-            TextColor = UIColor.Label
-        };
-        View.AddSubview(accessKeyLabel);
-
-        accessKeyField = new UITextField
-        {
-            Frame = new CGRect(20, 245, View.Bounds.Width - 40, 44),
-            Placeholder = "AKIA...",
-            BorderStyle = UITextBorderStyle.RoundedRect,
-            AutocapitalizationType = UITextAutocapitalizationType.None,
-            AutocorrectionType = UITextAutocorrectionType.No,
-            KeyboardType = UIKeyboardType.Default
-        };
-        View.AddSubview(accessKeyField);
-
-        // Secret Key Field
-        var secretKeyLabel = new UILabel
-        {
-            Frame = new CGRect(20, 305, View.Bounds.Width - 40, 20),
-            Text = "AWS Secret Access Key",
-            Font = UIFont.SystemFontOfSize(14),
-            TextColor = UIColor.Label
-        };
-        View.AddSubview(secretKeyLabel);
-
-        secretKeyField = new UITextField
-        {
-            Frame = new CGRect(20, 330, View.Bounds.Width - 40, 44),
-            Placeholder = "Enter secret key",
-            BorderStyle = UITextBorderStyle.RoundedRect,
-            SecureTextEntry = true,
-            AutocapitalizationType = UITextAutocapitalizationType.None,
-            AutocorrectionType = UITextAutocorrectionType.No
-        };
-        View.AddSubview(secretKeyField);
-
-        // Login Button
-        loginButton = UIButton.FromType(UIButtonType.System);
-        loginButton.Frame = new CGRect(20, 400, View.Bounds.Width - 40, 50);
-        loginButton.SetTitle("Connect to AWS", UIControlState.Normal);
-        loginButton.BackgroundColor = UIColor.SystemBlue;
-        loginButton.SetTitleColor(UIColor.White, UIControlState.Normal);
-        loginButton.Layer.CornerRadius = 10;
-        loginButton.TitleLabel!.Font = UIFont.BoldSystemFontOfSize(18);
-        loginButton.TouchUpInside += LoginButton_Clicked;
-        View.AddSubview(loginButton);
-
-        // Skip Button
+        // Skip Button (Visitor Mode)
         skipButton = UIButton.FromType(UIButtonType.System);
-        skipButton.Frame = new CGRect(20, 465, View.Bounds.Width - 40, 44);
-        skipButton.SetTitle("Skip (Anonymous Mode)", UIControlState.Normal);
-        skipButton.SetTitleColor(UIColor.SystemGray, UIControlState.Normal);
+        skipButton.Frame = new CGRect(20, 250, View.Bounds.Width - 40, 50);
+        skipButton.SetTitle("Continue as Visitor", UIControlState.Normal);
+        skipButton.BackgroundColor = UIColor.SystemGreen;
+        skipButton.SetTitleColor(UIColor.White, UIControlState.Normal);
+        skipButton.Layer.CornerRadius = 10;
+        skipButton.TitleLabel!.Font = UIFont.BoldSystemFontOfSize(18);
         skipButton.TouchUpInside += SkipButton_Clicked;
         View.AddSubview(skipButton);
+
+        // Login Button (Cognito - Future)
+        loginButton = UIButton.FromType(UIButtonType.System);
+        loginButton.Frame = new CGRect(20, 320, View.Bounds.Width - 40, 50);
+        loginButton.SetTitle("Login (Coming Soon)", UIControlState.Normal);
+        loginButton.BackgroundColor = UIColor.SystemGray5;
+        loginButton.SetTitleColor(UIColor.SystemGray, UIControlState.Normal);
+        loginButton.Layer.CornerRadius = 10;
+        loginButton.TitleLabel!.Font = UIFont.BoldSystemFontOfSize(18);
+        loginButton.Enabled = false; // Disabled until Phase 3
+        View.AddSubview(loginButton);
 
         // Activity Indicator
         activityIndicator = new UIActivityIndicatorView(UIActivityIndicatorViewStyle.Large)
@@ -123,8 +82,8 @@ public class LoginViewController : UIViewController
         // Info Label
         var infoLabel = new UILabel
         {
-            Frame = new CGRect(20, View.Bounds.Height - 120, View.Bounds.Width - 40, 80),
-            Text = "Visitors: Skip to browse prices (read-only)\nRegistered: Sign in for full access (upload, modify)\n\nRate limit: 20 requests per 5 minutes",
+            Frame = new CGRect(20, View.Bounds.Height - 180, View.Bounds.Width - 40, 140),
+            Text = "👀 Visitor Mode (Default):\n✓ Browse and query prices (read-only)\n✓ View market data\n✗ Cannot modify data\n\n🔐 Login (Phase 3):\n✓ Full access with authentication\n✓ Superusers can manage prices\n\nRate limit: 20 requests per 5 minutes",
             TextAlignment = UITextAlignment.Center,
             Font = UIFont.SystemFontOfSize(12),
             TextColor = UIColor.SystemGray,
@@ -133,58 +92,11 @@ public class LoginViewController : UIViewController
         View.AddSubview(infoLabel);
     }
 
-    private async void LoginButton_Clicked(object? sender, EventArgs e)
-    {
-        var accessKey = accessKeyField?.Text?.Trim() ?? "";
-        var secretKey = secretKeyField?.Text?.Trim() ?? "";
-
-        if (string.IsNullOrEmpty(accessKey) || string.IsNullOrEmpty(secretKey))
-        {
-            ShowAlert("Error", "Please enter both Access Key ID and Secret Access Key");
-            return;
-        }
-
-        if (activityIndicator != null) activityIndicator.StartAnimating();
-        if (loginButton != null) loginButton.Enabled = false;
-        if (skipButton != null) skipButton.Enabled = false;
-
-        await Task.Run(() =>
-        {
-            var success = AuthService.Instance.AuthenticateWithAccessKeys(accessKey, secretKey);
-            
-            InvokeOnMainThread(() =>
-            {
-                if (activityIndicator != null) activityIndicator.StopAnimating();
-                if (loginButton != null) loginButton.Enabled = true;
-                if (skipButton != null) skipButton.Enabled = true;
-
-                if (success)
-                {
-                    NavigateToMainScreen();
-                }
-                else
-                {
-                    ShowAlert("Authentication Failed", "Please check your AWS credentials and try again.");
-                }
-            });
-        });
-    }
-
     private void SkipButton_Clicked(object? sender, EventArgs e)
     {
-        // Show visitor info
-        var alert = UIAlertController.Create(
-            "Visitor Mode",
-            "As a visitor, you can:\n✓ Browse and query prices\n✓ View market data\n\n✗ Cannot upload data\n✗ Cannot modify prices\n\nTo unlock full features, create an account.",
-            UIAlertControllerStyle.Alert
-        );
-        alert.AddAction(UIAlertAction.Create("Cancel", UIAlertActionStyle.Cancel, null));
-        alert.AddAction(UIAlertAction.Create("Continue as Visitor", UIAlertActionStyle.Default, _ =>
-        {
-            AuthService.Instance.AuthenticateAnonymously();
-            NavigateToMainScreen();
-        }));
-        PresentViewController(alert, true, null);
+        // Set visitor mode and navigate
+        AuthService.Instance.SetVisitorMode();
+        NavigateToMainScreen();
     }
 
     private void NavigateToMainScreen()

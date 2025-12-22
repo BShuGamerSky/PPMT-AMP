@@ -1,15 +1,14 @@
-using Amazon.Runtime;
-
 namespace PPMT_AMP.Core.Services;
 
 /// <summary>
-/// Authentication service for AWS credentials management
+/// Authentication service for user role management
 /// </summary>
 public class AuthService
 {
     private static AuthService? _instance;
-    private AWSCredentials? _credentials;
-    private bool _isAuthenticated;
+    private string _role = "visitor"; // visitor, user, superuser
+    private string? _username;
+    private string? _userId;
 
     private AuthService() { }
 
@@ -22,64 +21,51 @@ public class AuthService
         }
     }
 
-    public bool IsAuthenticated => _isAuthenticated;
+    public string Role => _role;
+    public string? Username => _username;
+    public string? UserId => _userId;
+    public bool IsAuthenticated => _role != "visitor";
+    public bool IsSuperuser => _role == "superuser";
 
     /// <summary>
-    /// Authenticate using AWS Access Keys (for testing/development)
+    /// Set visitor mode (default, no authentication)
     /// </summary>
-    public bool AuthenticateWithAccessKeys(string accessKeyId, string secretAccessKey)
+    public void SetVisitorMode()
     {
-        try
-        {
-            _credentials = new BasicAWSCredentials(accessKeyId, secretAccessKey);
-            _isAuthenticated = true;
-            
-            // Update AWS service with new credentials
-            AWSService.Instance.ConfigureCredentials(accessKeyId, secretAccessKey);
-            
-            Console.WriteLine("Authentication successful with Access Keys");
-            return true;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Authentication failed: {ex.Message}");
-            _isAuthenticated = false;
-            return false;
-        }
+        _role = "visitor";
+        _username = null;
+        _userId = null;
+        Console.WriteLine("Using visitor mode (read-only)");
     }
 
     /// <summary>
-    /// Authenticate anonymously (for public resources only)
+    /// Authenticate with Cognito (future implementation)
     /// </summary>
-    public void AuthenticateAnonymously()
+    public Task<bool> LoginWithCognitoAsync(string username, string password)
     {
-        _credentials = new AnonymousAWSCredentials();
-        _isAuthenticated = false;
-        Console.WriteLine("Using anonymous credentials");
+        // TODO: Implement Cognito authentication in Phase 3
+        // For now, return false
+        Console.WriteLine("Cognito authentication not yet implemented");
+        return Task.FromResult(false);
     }
 
     /// <summary>
-    /// Sign out and clear credentials
+    /// Set superuser role (for testing - will be replaced with Cognito)
     /// </summary>
-    public void SignOut()
+    public void SetSuperuserRole(string username, string userId)
     {
-        _credentials = null;
-        _isAuthenticated = false;
-        Console.WriteLine("Signed out");
+        _role = "superuser";
+        _username = username;
+        _userId = userId;
+        Console.WriteLine($"Set superuser role: {username}");
     }
 
     /// <summary>
-    /// Get current credentials
+    /// Logout and return to visitor mode
     /// </summary>
-    public AWSCredentials? GetCredentials() => _credentials;
-
-    /// <summary>
-    /// Placeholder for future Cognito authentication
-    /// </summary>
-    public async Task<bool> AuthenticateWithCognito(string username, string password)
+    public void Logout()
     {
-        // TODO: Implement Cognito authentication in future
-        await Task.CompletedTask;
-        throw new NotImplementedException("Cognito authentication not yet implemented");
+        SetVisitorMode();
+        Console.WriteLine("Logged out");
     }
 }

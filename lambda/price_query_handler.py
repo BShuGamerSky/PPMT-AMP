@@ -11,7 +11,8 @@ from datetime import datetime, timedelta
 from decimal import Decimal
 
 # DynamoDB table names
-PRICE_TABLE = "PPMT-AMP-Prices"
+ITEMS_TABLE = "PPMT-AMP-Items"  # Individual blind box items with pricing
+SERIES_TABLE = "PPMT-AMP-Series"  # Series-level information
 RATE_LIMIT_TABLE = "PPMT-AMP-RateLimits"
 
 # Rate limiting configuration
@@ -127,12 +128,46 @@ def update_rate_limit(dynamodb, device_id):
     except Exception as e:
         print(f"Rate limit update error: {e}")
 
-def query_prices(dynamodb, product_id=None, category=None, start_date=None, end_date=None, limit=50):
-    """Query price data from DynamoDB"""
+def query_prices(dynamodb, series_id=None, product_id=None, ip_character=None, category=None, rarity=None, start_date=None, end_date=None, limit=50):
+    """Query price data from DynamoDB with new PopMart schema"""
     try:
-        # Build query parameters
+        # If SeriesId is provided, use Query (most efficient)
+        if series_id:
+            params = {
+                'TableName': ITEMS_TABLE,
+                'KeyConditionExpression': 'SeriesId = :sid',
+                'ExpressionAttributeValues': {
+                    ':sid': {'S': series_id}
+                },
+                'Limit': limit
+            }
+            
+            # Add optional ProductId range key condition
+            if product_id:
+                params['KeyConditionExpression'] += ' AND ProductId = :pid'
+                params['ExpressionAttributeValues'][':pid'] = {'S': product_id}
+            
+            response = dynamodb.query(**params)
+            return response.get('Items', [])
+        
+        # If IpCharacter is provided, use GSI query
+        if ip_character:
+            params = {
+                'TableName': ITEMS_TABLE,
+                'IndexName': 'IpCharacter-Timestamp-Index',
+                'KeyConditionExpression': 'IpCharacter = :ip',
+                'ExpressionAttributeValues': {
+                    ':ip': {'S': ip_character}
+                },
+                'ScanIndexForward': False,  # Latest timestamp first
+                'Limit': limit
+            }
+            response = dynamodb.query(**params)
+            return response.get('Items', [])
+        
+        # Otherwise use scan with filters
         params = {
-            'TableName': PRICE_TABLE,
+            'TableName': ITEMS_TABLE,
             'Limit': limit
         }
         
@@ -148,13 +183,23 @@ def query_prices(dynamodb, product_id=None, category=None, start_date=None, end_
             filter_expressions.append('Category = :cat')
             expression_values[':cat'] = {'S': category}
         
+        if rarity:
+            filter_expressions.append('Rarity = :rarity')
+            expression_values[':rarity'] = {'S': rarity}
+        
         if start_date:
-            filter_expressions.append('PriceDate >= :start')
+            filter_expressions.append('#ts >= :start')
             expression_values[':start'] = {'S': start_date}
+            if 'ExpressionAttributeNames' not in params:
+                params['ExpressionAttributeNames'] = {}
+            params['ExpressionAttributeNames']['#ts'] = 'Timestamp'
         
         if end_date:
-            filter_expressions.append('PriceDate <= :end')
+            filter_expressions.append('#ts <= :end')
             expression_values[':end'] = {'S': end_date}
+            if 'ExpressionAttributeNames' not in params:
+                params['ExpressionAttributeNames'] = {}
+            params['ExpressionAttributeNames']['#ts'] = 'Timestamp'
         
         if filter_expressions:
             params['FilterExpression'] = ' AND '.join(filter_expressions)
@@ -172,6 +217,23 @@ def lambda_handler(event, context):
     """Main Lambda handler for API Gateway requests"""
     import boto3
     import base64
+    
+    # Handle warmup requests from EventBridge (keeps Lambda container warm)
+    # This prevents cold starts by pinging Lambda every 5 minutes
+    if event.get('source') == 'aws.events':
+        print("EventBridge warmup ping - container staying warm")
+        return {
+            'statusCode': 200,
+            'body': json.dumps({'status': 'warm', 'message': 'Container ready'})
+        }
+    
+    # Handle warmup requests with custom payload
+    if event.get('warmup') == True:
+        print("Warmup request received - keeping container alive")
+        return {
+            'statusCode': 200,
+            'body': json.dumps({'status': 'warm', 'message': 'Container ready'})
+        }
     
     dynamodb = boto3.client('dynamodb')
     
@@ -216,7 +278,7 @@ def lambda_handler(event, context):
         }
     
     # Verification 3: Check signature
-    # Hybrid approach: Verify method + path
+    # Verify method + path
     http_method = event.get('httpMethod', 'GET')
     path = event.get('path', '/prices')
     payload = f"{http_method}:{path}"
@@ -245,8 +307,11 @@ def lambda_handler(event, context):
         }
     
     # Parse query parameters for price query
+    series_id = query_params.get('seriesId')
     product_id = query_params.get('productId')
+    ip_character = query_params.get('ipCharacter')
     category = query_params.get('category')
+    rarity = query_params.get('rarity')
     start_date = query_params.get('startDate')
     end_date = query_params.get('endDate')
     limit = int(query_params.get('limit', '50'))
@@ -257,8 +322,11 @@ def lambda_handler(event, context):
     # Query prices
     results = query_prices(
         dynamodb,
+        series_id=series_id,
         product_id=product_id,
+        ip_character=ip_character,
         category=category,
+        rarity=rarity,
         start_date=start_date,
         end_date=end_date,
         limit=int(limit)

@@ -19,7 +19,7 @@ public class MainViewController : UIViewController
 
     private ApiClient apiClient;
     private AuthService authService;
-    private List<PriceData> priceDataList = new();
+    private List<PpmtItem> priceDataList = new();
 
     public MainViewController()
     {
@@ -135,7 +135,13 @@ public class MainViewController : UIViewController
         {
             Console.WriteLine("Querying prices from API...");
             
+            // Measure API response time
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
             var response = await apiClient.QueryPricesAsync();
+            stopwatch.Stop();
+            
+            var responseTimeMs = stopwatch.ElapsedMilliseconds;
+            Console.WriteLine($"API Response Time: {responseTimeMs}ms");
             
             // Update rate limit display
             if (rateLimitLabel != null && response.RateLimitRemaining.HasValue)
@@ -146,8 +152,8 @@ public class MainViewController : UIViewController
             if (response.Success && response.Data != null)
             {
                 priceDataList = response.Data;
-                ShowAlert("Success", $"Retrieved {response.Data.Count} price records");
-                Console.WriteLine($"Retrieved {response.Data.Count} records");
+                ShowAlert("Success", $"Retrieved {response.Data.Count} price records\nResponse time: {responseTimeMs}ms");
+                Console.WriteLine($"Retrieved {response.Data.Count} records in {responseTimeMs}ms");
             }
             else
             {
@@ -222,7 +228,7 @@ public class MainViewController : UIViewController
         alert.AddAction(UIAlertAction.Create("Cancel", UIAlertActionStyle.Cancel, null));
         alert.AddAction(UIAlertAction.Create("Sign Out", UIAlertActionStyle.Destructive, _ =>
         {
-            authService.SignOut();
+            authService.Logout();
             NavigationController?.PopViewController(true);
         }));
         PresentViewController(alert, true, null);
