@@ -33,10 +33,6 @@ def verify_signature(app_id, device_id, timestamp, payload, signature):
     ).digest()
     expected_signature_b64 = base64.b64encode(expected_signature).decode()
     
-    print(f"DEBUG: message={message}")
-    print(f"DEBUG: expected={expected_signature_b64}")
-    print(f"DEBUG: received={signature}")
-    
     return hmac.compare_digest(signature, expected_signature_b64)
 
 def check_rate_limit(dynamodb, device_id):
@@ -128,6 +124,24 @@ def update_rate_limit(dynamodb, device_id):
     except Exception as e:
         print(f"Rate limit update error: {e}")
 
+def deserialize_dynamodb_item(item):
+    """Convert DynamoDB item format to plain Python dict"""
+    result = {}
+    for key, value in item.items():
+        if 'S' in value:
+            result[key] = value['S']
+        elif 'N' in value:
+            result[key] = float(value['N']) if '.' in value['N'] else int(value['N'])
+        elif 'BOOL' in value:
+            result[key] = value['BOOL']
+        elif 'L' in value:
+            result[key] = [deserialize_dynamodb_item({'item': v})['item'] for v in value['L']]
+        elif 'M' in value:
+            result[key] = deserialize_dynamodb_item(value['M'])
+        elif 'NULL' in value:
+            result[key] = None
+    return result
+
 def query_prices(dynamodb, series_id=None, product_id=None, ip_character=None, category=None, rarity=None, start_date=None, end_date=None, limit=50):
     """Query price data from DynamoDB with new PopMart schema"""
     try:
@@ -148,7 +162,9 @@ def query_prices(dynamodb, series_id=None, product_id=None, ip_character=None, c
                 params['ExpressionAttributeValues'][':pid'] = {'S': product_id}
             
             response = dynamodb.query(**params)
-            return response.get('Items', [])
+            items = response.get('Items', [])
+            deserialized = [deserialize_dynamodb_item(item) for item in items]
+            return deserialized
         
         # If IpCharacter is provided, use GSI query
         if ip_character:
@@ -163,7 +179,24 @@ def query_prices(dynamodb, series_id=None, product_id=None, ip_character=None, c
                 'Limit': limit
             }
             response = dynamodb.query(**params)
-            return response.get('Items', [])
+            items = response.get('Items', [])
+            return [deserialize_dynamodb_item(item) for item in items]
+        
+        # If Category is provided, use GSI query
+        if category:
+            params = {
+                'TableName': ITEMS_TABLE,
+                'IndexName': 'Category-AfterMarketPrice-Index',
+                'KeyConditionExpression': 'Category = :cat',
+                'ExpressionAttributeValues': {
+                    ':cat': {'S': category}
+                },
+                'ScanIndexForward': False,  # Highest price first
+                'Limit': limit
+            }
+            response = dynamodb.query(**params)
+            items = response.get('Items', [])
+            return [deserialize_dynamodb_item(item) for item in items]
         
         # Otherwise use scan with filters
         params = {
@@ -206,11 +239,73 @@ def query_prices(dynamodb, series_id=None, product_id=None, ip_character=None, c
             params['ExpressionAttributeValues'] = expression_values
         
         response = dynamodb.scan(**params)
-        
-        return response.get('Items', [])
+        items = response.get('Items', [])
+        return [deserialize_dynamodb_item(item) for item in items]
         
     except Exception as e:
         print(f"Query error: {e}")
+        return []
+
+def query_series(dynamodb, ip_character=None, series_id=None, category=None, limit=50):
+    """Query series from DynamoDB PPMT-AMP-Series table"""
+    try:
+        # If seriesId is provided, get specific series
+        if series_id:
+            response = dynamodb.get_item(
+                TableName=SERIES_TABLE,
+                Key={'SeriesId': {'S': series_id}}
+            )
+            item = response.get('Item')
+            return [deserialize_dynamodb_item(item)] if item else []
+        
+        # If IpCharacter is provided, try GSI query first, fallback to scan
+        if ip_character:
+            try:
+                params = {
+                    'TableName': SERIES_TABLE,
+                    'IndexName': 'IpCharacter-Index',
+                    'KeyConditionExpression': 'IpCharacter = :ip',
+                    'ExpressionAttributeValues': {
+                        ':ip': {'S': ip_character}
+                    },
+                    'Limit': limit
+                }
+                response = dynamodb.query(**params)
+                items = response.get('Items', [])
+                return [deserialize_dynamodb_item(item) for item in items]
+            except Exception as gsi_error:
+                print(f"GSI query failed (may not exist yet): {gsi_error}")
+                print("Falling back to scan with filter...")
+                # Fallback to scan with filter
+                params = {
+                    'TableName': SERIES_TABLE,
+                    'FilterExpression': 'IpCharacter = :ip',
+                    'ExpressionAttributeValues': {
+                        ':ip': {'S': ip_character}
+                    },
+                    'Limit': limit
+                }
+                response = dynamodb.scan(**params)
+                items = response.get('Items', [])
+                return [deserialize_dynamodb_item(item) for item in items]
+        
+        # Otherwise, scan all series
+        params = {
+            'TableName': SERIES_TABLE,
+            'Limit': limit
+        }
+        
+        # Add category filter if provided
+        if category:
+            params['FilterExpression'] = 'Category = :cat'
+            params['ExpressionAttributeValues'] = {':cat': {'S': category}}
+        
+        response = dynamodb.scan(**params)
+        items = response.get('Items', [])
+        return [deserialize_dynamodb_item(item) for item in items]
+        
+    except Exception as e:
+        print(f"Series query error: {e}")
         return []
 
 def lambda_handler(event, context):
@@ -306,31 +401,48 @@ def lambda_handler(event, context):
             })
         }
     
-    # Parse query parameters for price query
-    series_id = query_params.get('seriesId')
-    product_id = query_params.get('productId')
-    ip_character = query_params.get('ipCharacter')
-    category = query_params.get('category')
-    rarity = query_params.get('rarity')
-    start_date = query_params.get('startDate')
-    end_date = query_params.get('endDate')
-    limit = int(query_params.get('limit', '50'))
-    
     # Update rate limit
     update_rate_limit(dynamodb, device_id)
     
-    # Query prices
-    results = query_prices(
-        dynamodb,
-        series_id=series_id,
-        product_id=product_id,
-        ip_character=ip_character,
-        category=category,
-        rarity=rarity,
-        start_date=start_date,
-        end_date=end_date,
-        limit=int(limit)
-    )
+    # Route based on path
+    if path == '/series':
+        # Handle series query
+        series_id = query_params.get('seriesId')
+        ip_character = query_params.get('ipCharacter')
+        category = query_params.get('category')
+        limit = int(query_params.get('limit', '50'))
+        
+        results = query_series(
+            dynamodb,
+            ip_character=ip_character,
+            series_id=series_id,
+            category=category,
+            limit=limit
+        )
+        
+    else:  # Default to /prices
+        # Parse query parameters for price query
+        series_id = query_params.get('seriesId')
+        product_id = query_params.get('productId')
+        ip_character = query_params.get('ipCharacter')
+        category = query_params.get('category')
+        rarity = query_params.get('rarity')
+        start_date = query_params.get('startDate')
+        end_date = query_params.get('endDate')
+        limit = int(query_params.get('limit', '50'))
+        
+        # Query prices
+        results = query_prices(
+            dynamodb,
+            series_id=series_id,
+            product_id=product_id,
+            ip_character=ip_character,
+            category=category,
+            rarity=rarity,
+            start_date=start_date,
+            end_date=end_date,
+            limit=int(limit)
+        )
     
     # Return response
     return {

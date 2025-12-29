@@ -31,8 +31,6 @@ public class PpmtItem
     // Additional Fields
     public string ImageUrl { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     
     // Legacy compatibility (for backward compatibility during migration)
     [Obsolete("Use AfterMarketPrice instead")]
@@ -57,7 +55,7 @@ public class PpmtSeries
     public string Description { get; set; } = string.Empty;
     
     // Release Information
-    public DateTime ReleaseDate { get; set; }
+    public string? ReleaseDate { get; set; } // Store as string for flexibility (e.g., "2024-12")
     public string Status { get; set; } = "Active"; // Active, Pre-Order, Discontinued
     
     // Series Details
@@ -77,8 +75,6 @@ public class PpmtSeries
     // Metadata
     public string Manufacturer { get; set; } = "Pop Mart";
     public string Region { get; set; } = "CN"; // CN, US, EU, etc.
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
     public string Timestamp { get; set; } = DateTime.UtcNow.ToString("o");
     
     // TTL for automatic expiration

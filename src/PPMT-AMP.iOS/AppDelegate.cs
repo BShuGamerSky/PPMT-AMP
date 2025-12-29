@@ -14,9 +14,9 @@ public class AppDelegate : UIApplicationDelegate
         // Create the main window
         Window = new UIWindow(UIScreen.MainScreen.Bounds);
 
-        // Start with login screen
-        var loginViewController = new LoginViewController();
-        var navigationController = new UINavigationController(loginViewController);
+        // Start with main home screen (not login)
+        var mainViewController = new MainViewController();
+        var navigationController = new UINavigationController(mainViewController);
 
         Window.RootViewController = navigationController;
         Window.MakeKeyAndVisible();

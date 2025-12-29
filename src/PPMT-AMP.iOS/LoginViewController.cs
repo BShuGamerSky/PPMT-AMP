@@ -1,3 +1,4 @@
+using System;
 using UIKit;
 using CoreGraphics;
 using PPMT_AMP.Core.Services;
@@ -7,18 +8,28 @@ namespace PPMT_AMP.iOS;
 public class LoginViewController : UIViewController
 {
     private UILabel? titleLabel;
+    private UITextField? usernameField;
+    private UITextField? passwordField;
     private UIButton? loginButton;
     private UIButton? skipButton;
     private UIActivityIndicatorView? activityIndicator;
+
+    private AuthService authService;
+
+    public LoginViewController()
+    {
+        authService = AuthService.Instance;
+    }
 
     public override void ViewDidLoad()
     {
         base.ViewDidLoad();
 
-        Title = "Welcome";
+        Title = "Sign In";
+        
         if (View != null)
         {
-            View.BackgroundColor = UIColor.SystemBackground;
+            View.BackgroundColor = UIColor.FromRGB(245, 245, 250);
             SetupUI();
         }
     }
@@ -27,82 +38,117 @@ public class LoginViewController : UIViewController
     {
         if (View == null) return;
 
-        // Title
+        nfloat centerY = View.Bounds.Height / 2 - 150;
+        nfloat margin = 40;
+
+        // Logo/Title
         titleLabel = new UILabel
         {
-            Frame = new CGRect(20, 100, View.Bounds.Width - 40, 50),
-            Text = "PPMT-AMP",
+            Frame = new CGRect(margin, centerY, View.Bounds.Width - 2 * margin, 80),
+            Text = "🎁\nPopMart",
+            Font = UIFont.SystemFontOfSize(48, UIFontWeight.Bold),
+            TextColor = UIColor.FromRGB(255, 69, 58),
             TextAlignment = UITextAlignment.Center,
-            Font = UIFont.BoldSystemFontOfSize(32),
-            TextColor = UIColor.Label
+            Lines = 2
         };
         View.AddSubview(titleLabel);
 
-        var subtitleLabel = new UILabel
+        // Username field
+        usernameField = new UITextField
         {
-            Frame = new CGRect(20, 160, View.Bounds.Width - 40, 30),
-            Text = "After-Market Price Management",
-            TextAlignment = UITextAlignment.Center,
+            Frame = new CGRect(margin, centerY + 100, View.Bounds.Width - 2 * margin, 50),
+            Placeholder = "Username",
+            BorderStyle = UITextBorderStyle.RoundedRect,
+            BackgroundColor = UIColor.White,
             Font = UIFont.SystemFontOfSize(16),
-            TextColor = UIColor.SecondaryLabel
+            AutocapitalizationType = UITextAutocapitalizationType.None,
+            AutocorrectionType = UITextAutocorrectionType.No
         };
-        View.AddSubview(subtitleLabel);
+        View.AddSubview(usernameField);
 
-        // Skip Button (Visitor Mode)
+        // Password field
+        passwordField = new UITextField
+        {
+            Frame = new CGRect(margin, centerY + 160, View.Bounds.Width - 2 * margin, 50),
+            Placeholder = "Password",
+            BorderStyle = UITextBorderStyle.RoundedRect,
+            BackgroundColor = UIColor.White,
+            Font = UIFont.SystemFontOfSize(16),
+            SecureTextEntry = true
+        };
+        View.AddSubview(passwordField);
+
+        // Login button
+        loginButton = UIButton.FromType(UIButtonType.System);
+        loginButton.Frame = new CGRect(margin, centerY + 230, View.Bounds.Width - 2 * margin, 50);
+        loginButton.SetTitle("Sign In", UIControlState.Normal);
+        loginButton.BackgroundColor = UIColor.FromRGB(255, 69, 58);
+        loginButton.SetTitleColor(UIColor.White, UIControlState.Normal);
+        loginButton.Layer.CornerRadius = 12;
+        loginButton.TitleLabel!.Font = UIFont.SystemFontOfSize(17, UIFontWeight.Semibold);
+        loginButton.TouchUpInside += LoginButton_Clicked;
+        View.AddSubview(loginButton);
+
+        // Skip button
         skipButton = UIButton.FromType(UIButtonType.System);
-        skipButton.Frame = new CGRect(20, 250, View.Bounds.Width - 40, 50);
-        skipButton.SetTitle("Continue as Visitor", UIControlState.Normal);
-        skipButton.BackgroundColor = UIColor.SystemGreen;
-        skipButton.SetTitleColor(UIColor.White, UIControlState.Normal);
-        skipButton.Layer.CornerRadius = 10;
-        skipButton.TitleLabel!.Font = UIFont.BoldSystemFontOfSize(18);
+        skipButton.Frame = new CGRect(margin, centerY + 290, View.Bounds.Width - 2 * margin, 44);
+        skipButton.SetTitle("Continue as Guest", UIControlState.Normal);
+        skipButton.SetTitleColor(UIColor.FromRGB(142, 142, 147), UIControlState.Normal);
+        skipButton.TitleLabel!.Font = UIFont.SystemFontOfSize(15);
         skipButton.TouchUpInside += SkipButton_Clicked;
         View.AddSubview(skipButton);
 
-        // Login Button (Cognito - Future)
-        loginButton = UIButton.FromType(UIButtonType.System);
-        loginButton.Frame = new CGRect(20, 320, View.Bounds.Width - 40, 50);
-        loginButton.SetTitle("Login (Coming Soon)", UIControlState.Normal);
-        loginButton.BackgroundColor = UIColor.SystemGray5;
-        loginButton.SetTitleColor(UIColor.SystemGray, UIControlState.Normal);
-        loginButton.Layer.CornerRadius = 10;
-        loginButton.TitleLabel!.Font = UIFont.BoldSystemFontOfSize(18);
-        loginButton.Enabled = false; // Disabled until Phase 3
-        View.AddSubview(loginButton);
-
         // Activity Indicator
-        activityIndicator = new UIActivityIndicatorView(UIActivityIndicatorViewStyle.Large)
+        activityIndicator = new UIActivityIndicatorView(UIActivityIndicatorViewStyle.Medium)
         {
             Center = View.Center,
             HidesWhenStopped = true,
-            Color = UIColor.SystemBlue
+            Color = UIColor.FromRGB(255, 69, 58)
         };
         View.AddSubview(activityIndicator);
+    }
 
-        // Info Label
-        var infoLabel = new UILabel
+    private async void LoginButton_Clicked(object? sender, EventArgs e)
+    {
+        string username = usernameField?.Text ?? "";
+        string password = passwordField?.Text ?? "";
+
+        if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password))
         {
-            Frame = new CGRect(20, View.Bounds.Height - 180, View.Bounds.Width - 40, 140),
-            Text = "👀 Visitor Mode (Default):\n✓ Browse and query prices (read-only)\n✓ View market data\n✗ Cannot modify data\n\n🔐 Login (Phase 3):\n✓ Full access with authentication\n✓ Superusers can manage prices\n\nRate limit: 20 requests per 5 minutes",
-            TextAlignment = UITextAlignment.Center,
-            Font = UIFont.SystemFontOfSize(12),
-            TextColor = UIColor.SystemGray,
-            Lines = 0
-        };
-        View.AddSubview(infoLabel);
+            ShowAlert("Error", "Please enter both username and password");
+            return;
+        }
+
+        activityIndicator?.StartAnimating();
+        loginButton!.Enabled = false;
+
+        try
+        {
+            bool success = await authService.LoginWithCognitoAsync(username, password);
+            
+            if (success)
+            {
+                DismissViewController(true, null);
+            }
+            else
+            {
+                ShowAlert("Login Failed", "Invalid username or password");
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowAlert("Error", $"Login failed: {ex.Message}");
+        }
+        finally
+        {
+            activityIndicator?.StopAnimating();
+            loginButton!.Enabled = true;
+        }
     }
 
     private void SkipButton_Clicked(object? sender, EventArgs e)
     {
-        // Set visitor mode and navigate
-        AuthService.Instance.SetVisitorMode();
-        NavigateToMainScreen();
-    }
-
-    private void NavigateToMainScreen()
-    {
-        var mainViewController = new MainViewController();
-        NavigationController?.PushViewController(mainViewController, true);
+        DismissViewController(true, null);
     }
 
     private void ShowAlert(string title, string message)

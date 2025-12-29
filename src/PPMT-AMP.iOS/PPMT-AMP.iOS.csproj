@@ -10,6 +10,16 @@
     <ImplicitUsings>true</ImplicitUsings>
   </PropertyGroup>
 
+  <!-- Configuration for Debug builds on Simulator -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
+    <RuntimeIdentifier>iossimulator-arm64</RuntimeIdentifier>
+  </PropertyGroup>
+
+  <!-- Configuration for Release builds on Device -->
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <RuntimeIdentifier>ios-arm64</RuntimeIdentifier>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="AWSSDK.Core" Version="3.7.*" />
     <PackageReference Include="AWSSDK.S3" Version="3.7.*" />

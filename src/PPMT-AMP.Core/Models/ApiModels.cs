@@ -37,7 +37,7 @@ public class ApiResponse<T>
     public string Message { get; set; } = string.Empty;
     public T? Data { get; set; }
     public int? RateLimitRemaining { get; set; }
-    public DateTime? RateLimitReset { get; set; }
+    public string? RateLimitReset { get; set; }  // Changed to string for flexible parsing
 }
 
 /// <summary>
